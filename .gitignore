@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data files (usually large)
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.png
+*.bmp
+!docs/*.png  # Allow documentation images
+!examples/*.png
+
+# Model files (can be large)
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Dataset directories
+data/
+datasets/
+raw_data/
+processed_data/
+snippets_*/
+masks/
+heightmaps/
+normalmaps/
+images/
+training_data/
+test_data/
+validation_data/
+
+# Results and outputs
+results/
+outputs/
+evaluation_results/
+checkpoints/
+logs/
+runs/  # Tensorboard logs
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.cache
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Documentation build
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Custom
+scratch/
+temp/
+old/
+backup/
