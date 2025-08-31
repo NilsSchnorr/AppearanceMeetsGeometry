@@ -10,7 +10,7 @@
 
 **Paper Title:** Appearance Meets Geometry: Deep Learning for Segmentation and Classification in Archaeological Fortification Studies
 
-**DOI:** [TO BE FILLED - Once assigned]
+**DOI:** 10.5281/zenodo.17011862
 
 **Authors:** Nils Schnorr¹, Thomas Leimkühler²
 **Affiliations:** 
