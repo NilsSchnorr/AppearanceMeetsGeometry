@@ -6,10 +6,13 @@
 
 ##  Publication Information
 
-**Conference:** International Conference on Computer Applications in Archaeology (CAA) 2025, Athens  
+**Conference:** International Conference on Computer Applications in Archaeology (CAA) 2025, Athens
+
 **Paper Title:** Appearance Meets Geometry: Deep Learning for Segmentation and Classification in Archaeological Fortification Studies
+
 **DOI:** [TO BE FILLED - Once assigned]
-**Authors:** Nils Schnorr¹, Thomas Leimkühler²  
+
+**Authors:** Nils Schnorr¹, Thomas Leimkühler²
 **Affiliations:** 
 - ¹ Saarland University, Institute for Classical Archaeology
 - ² Max Planck Institute for Informaticts
