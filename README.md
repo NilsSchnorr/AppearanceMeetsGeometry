@@ -116,6 +116,11 @@ your_data_directory/
    - Remove invalid (black) masks
 
 **Expected Output:** Directories containing aligned snippets ready for training
+**CAUTION:** IF YOU WANT TO REPRODUCE THE RESULTS OF THE PAPER, YOU NEED TO EXCLUDE THE TESTING WALLS FROM THE TRAINING SET.
+For this, please:
+1. Run the Image Preparation Pipeline steps 1 - 5.
+2. Before you run the Image Preparation Pipeline steps 6 - 8, the testing images need to be excluded from the training folders. For this, from the folders "images" and "normalmaps", please remove the files with the names "testwall1", "testwall2", "testwall3" and "testwall4" and their flipped counterparts from their original folders and save them in a different folder of your choice.
+3. These images can then be used for image segmentation and evaluation of the models.
 
 ### Step 2: Model Training
 
