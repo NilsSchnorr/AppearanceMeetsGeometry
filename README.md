@@ -1,4 +1,4 @@
-# Appearance Meets Geometry: A CNN Approach to Segment Ancient Fortification Facades
+# Appearance Meets Geometry: A CNN Pipeline to Segment Ancient Fortification Wall Facades
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
@@ -8,7 +8,7 @@
 
 **Conference:** International Conference on Computer Applications in Archaeology (CAA) 2025, Athens
 
-**Paper Title:** Appearance Meets Geometry: Deep Learning for Segmentation and Classification in Archaeological Fortification Studies
+**Paper Title:** Appearance Meets Geometry: Deep Learning for Semantic Segmentation in Archaeological Fortification Studies
 
 **Preprint DOI:** 10.5281/zenodo.17011862
 
@@ -29,6 +29,7 @@ These results confirm that visual and geometric features provide complementary i
 ## Overview
 
 This repository contains the complete pipeline for semantic segmentation of ancient fortification facades using a multi-channel U-Net architecture. The approach combines geometric information (normal maps derived from heightmaps) with appearance data (orthomosaics) to classify masonry types in archaeological documentation.
+For the Results, please refere to the publication (preprint: 10.5281/zenodo.17011862)
 
 ### Key Features
 - **Multi-channel Input Support:** 3-channel (normal maps only), 4-channel (RGB + alpha), or 7-channel (RGB + normal maps + alpha) configurations
