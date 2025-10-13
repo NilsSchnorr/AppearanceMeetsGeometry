@@ -10,14 +10,21 @@
 
 **Paper Title:** Appearance Meets Geometry: Deep Learning for Segmentation and Classification in Archaeological Fortification Studies
 
-**DOI:** 10.5281/zenodo.17011862
+**Preprint DOI:** 10.5281/zenodo.17011862
 
 **Authors:** Nils Schnorr¹, Thomas Leimkühler²
-**Affiliations:** 
-- ¹ Saarland University, Institute for Classical Archaeology
-- ² Max Planck Institute for Informaticts
 
-**Abstract:** [TO BE FILLED]
+**Affiliations:** 
+- ¹ Saarland University, Institute for Classical Archaeology, Saarbrücken, Germany
+- ² Max Planck Institute for Informaticts, Saarbrücken, Germany
+
+**Abstract:** 
+
+Modern archaeological practice faces a critical bottleneck: while photogrammetric surveys routinely generate terabytes of high-resolution 3D data from ancient fortifications, manual interpretation methods remain time-consuming and subjective, leaving much documentation underexploited. This paper presents a novel machine-learning workflow that bridges the gap between high-throughput data acquisition and efficient analysis by leveraging both appearance and geometric information from 3D photogrammetric models for automated masonry semantic segmentation.
+Our approach transforms 3D documentation into a dual-layer format combining high-resolution orthomosaics with geometry-based normal maps derived from heightmap data. We trained convolutional neural networks on annotated datasets from Carian fortification walls spanning approximately 2 kilometers across the ancient sites of Halicarnassus and Cedreae. The training dataset so far comprises 1,876 m² of wall facade with 5,560 individually annotated stones across several masonry classes.
+Comparative evaluation of appearance-only, geometry-only, and combined models demonstrates clear performance advantages for the integrated approach. The combined model achieved a 19% improvement over appearance-only models and 14% over geometry-only approaches.
+These results confirm that visual and geometric features provide complementary information essential for robust archaeological analysis. The automated pipeline enables processing of kilometer-long fortifications in minutes rather than weeks, transforming archaeological documentation from selective sampling to comprehensive analysis of entire defensive systems. This work represents a concrete step toward realizing photogrammetry's analytical potential, enabling systematic comparative studies across sites and periods at unprecedented scales.
+
 
 ## Overview
 
@@ -78,7 +85,7 @@ pip install jupyter notebook ipykernel
 2. **Heightmaps** (GeoTIFF format)
 3. **COCO JSON Annotations** (polygon annotations for masonry classes)
 
-### Data Directory Structure
+### Data Directory Structure (will be set up by the image_preparation_pipeline)
 ```
 your_data_directory/
 ├── images/              # Original orthomosaics
@@ -112,10 +119,11 @@ your_data_directory/
    - Convert COCO annotations to color-coded masks
    - Apply data augmentation (horizontal flipping)
    - Generate normal maps from heightmaps
-   - Create training snippets using Sobol sampling
+   - Create training snippets using Sobol sampling (See "CAUTION"-Information below)
    - Remove invalid (black) masks
 
 **Expected Output:** Directories containing aligned snippets ready for training
+
 **CAUTION:** IF YOU WANT TO REPRODUCE THE RESULTS OF THE PAPER, YOU NEED TO EXCLUDE THE TESTING WALLS FROM THE TRAINING SET.
 For this, please:
 1. Run the Image Preparation Pipeline steps 1 - 5.
@@ -194,11 +202,11 @@ For this, please:
 
 We provide three pre-trained models in the `02_MachineLearning` folder:
 
-| Model | Input Channels | Description | mIoU |
+| Model | Input Channels | Description |
 |-------|---------------|-------------|------|
-| `2025-08-11_3-channel_4-class-EX_300.pth` | 3 | Normal maps only | [TO BE FILLED] |
-| `2025-08-11_4-channel_4-class-EX_300.pth` | 4 | RGB + depth | [TO BE FILLED] |
-| `2025-08-11_7-channel_4-class-EX_300.pth` | 7 | Full multi-modal | [TO BE FILLED] |
+| `2025-08-11_3-channel_4-class-EX_300.pth` | 3 | Normal maps only |
+| `2025-08-11_4-channel_4-class-EX_300.pth` | 4 | RGB + alpha |
+| `2025-08-11_7-channel_4-class-EX_300.pth` | 7 | Full model |
 
 ## Class Color Mapping
 
@@ -209,45 +217,18 @@ We provide three pre-trained models in the `02_MachineLearning` folder:
 | Polygonal | Red (255,0,0) | #FF0000 |
 | Quarry Stone | Yellow (255,255,0) | #FFFF00 |
 
-## Results
-
-[TO BE FILLED - Add your key results, sample segmentations, and performance metrics]
-
-### Sample Segmentation Results
-[Add figure showing input image, ground truth, and prediction]
-
-### Quantitative Evaluation
-[Add table with IoU and F1 scores for each class]
-
-## Troubleshooting
-
-### Common Issues
-
-1. **CUDA Out of Memory:**
-   - Reduce `CROP_SIZE` in image preparation
-   - Decrease batch size in training notebooks
-   - Use gradient accumulation
-
-2. **Black Mask Detection:**
-   - Ensure proper color mapping in COCO annotations
-   - Check `CLASS_COLORS` dictionary matches your annotation scheme
-
-3. **Misaligned Snippets:**
-   - Verify all input images have the same resolution
-   - Check that Sobol sampling parameters are consistent
-
 ## Citation
 
 If you use this code in your research, please cite:
 
 ```bibtex
 @inproceedings{schnorr2025appearance,
-  title={[Your Paper Title]},
+  title={[Appearance Meets Geometry: Deep Learning for Semantic Segmentation in Archaeological Fortification Studies]},
   author={Schnorr, Nils and Leimkühler, Thomas},
   booktitle={Proceedings of the International Conference on Computer Applications in Archaeology (CAA)},
   year={2025},
   address={Athens, Greece},
-  doi={[TO BE FILLED]}
+  doi={10.5281/zenodo.17011862}
 }
 ```
 
@@ -255,14 +236,7 @@ If you use this code in your research, please cite:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-
-
-
-## Acknowledgments
-
-[TO BE FILLED - Add acknowledgments to funding sources, institutions, or individuals who contributed]
-
 ---
 
-**Last Updated:** August 2025
+**Last Updated:** September 2025
 **Repository:** https://github.com/NilsSchnorr/AppearanceMeetsGeometry
