@@ -203,15 +203,11 @@ FOR THIS, PLEASE:
 
 We provide three pre-trained models in the `02_MachineLearning` folder:
 
-| Model | Input Channels | Description |
+| `2025-08-11_3-channel_4-class-EX_300.pth` | 3 input channels | Normal maps only |
 
-|-------|---------------|-------------|------|
+| `2025-08-11_4-channel_4-class-EX_300.pth` | 4 input channels | RGB + alpha |
 
-| `2025-08-11_3-channel_4-class-EX_300.pth` | 3 | Normal maps only |
-
-| `2025-08-11_4-channel_4-class-EX_300.pth` | 4 | RGB + alpha |
-
-| `2025-08-11_7-channel_4-class-EX_300.pth` | 7 | Full model |
+| `2025-08-11_7-channel_4-class-EX_300.pth` | 7 input channels | Full model |
 
 ## Class Color Mapping
 
