@@ -29,7 +29,7 @@ These results confirm that visual and geometric features provide complementary i
 ## Overview
 
 This repository contains the complete pipeline for semantic segmentation of ancient fortification facades using a multi-channel U-Net architecture. The approach combines geometric information (normal maps derived from heightmaps) with appearance data (orthomosaics) to classify masonry types in archaeological documentation.
-For the Results, please refere to the publication (preprint: 10.5281/zenodo.17011862)
+For the results, please refere to the publication (preprint: 10.5281/zenodo.17011862)
 
 ### Key Features
 - **Multi-channel Input Support:** 3-channel (normal maps only), 4-channel (RGB + alpha), or 7-channel (RGB + normal maps + alpha) configurations
@@ -66,7 +66,7 @@ AppearanceMeetsGeometry/
 
 ```bash
 # Create a new conda environment
-conda create -n appearance-geometry python=3.9
+conda create -n appearance-geometry python=3.11.9
 conda activate appearance-geometry
 
 # Install required packages
@@ -112,8 +112,8 @@ your_data_directory/
    ```python
    BASE_DIR = "path/to/your/data"
    COCO_JSON_PATH = "path/to/annotations.json"
-   CROP_SIZE = 1280  # Snippet size
-   DESIRED_COVERAGE = 1.6  # Sobol coverage factor
+   CROP_SIZE = 1280  # Snippet size used in publication
+   DESIRED_COVERAGE = 1.6  # Sobol coverage factor used in publication
    ```
 
 3. **Run all cells sequentially** to:
@@ -126,7 +126,7 @@ your_data_directory/
 **Expected Output:** Directories containing aligned snippets ready for training
 
 **CAUTION:** IF YOU WANT TO REPRODUCE THE RESULTS OF THE PAPER, YOU NEED TO EXCLUDE THE TESTING WALLS FROM THE TRAINING SET.
-For this, please:
+FOR THIS, PLEASE:
 1. Run the Image Preparation Pipeline steps 1 - 5.
 2. Before you run the Image Preparation Pipeline steps 6 - 8, the testing images need to be excluded from the training folders. For this, from the folders "images", "masks" and "normalmaps", please remove the files with the names "wall1", "wall2", "wall3" and "wall4" and their "flipped_" counterparts from their original folders and save them in a different folder of your choice.
 3. These images can then be used for image segmentation and evaluation of the models.
@@ -204,9 +204,13 @@ For this, please:
 We provide three pre-trained models in the `02_MachineLearning` folder:
 
 | Model | Input Channels | Description |
+
 |-------|---------------|-------------|------|
+
 | `2025-08-11_3-channel_4-class-EX_300.pth` | 3 | Normal maps only |
+
 | `2025-08-11_4-channel_4-class-EX_300.pth` | 4 | RGB + alpha |
+
 | `2025-08-11_7-channel_4-class-EX_300.pth` | 7 | Full model |
 
 ## Class Color Mapping
