@@ -95,3 +95,4 @@ scratch/
 temp/
 old/
 backup/
+.DS_Store
