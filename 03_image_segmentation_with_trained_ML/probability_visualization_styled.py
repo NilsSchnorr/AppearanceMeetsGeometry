@@ -57,18 +57,46 @@ def create_segmentation_colormap():
     return ListedColormap(CLASS_COLORS_RGB)
 
 
+def print_sample_point_data(class_scores, sample_points, image_name="image"):
+    """
+    Print simple text output for sample points.
+    
+    Output format:
+    Image: [name]
+    Point 1: (x, y) | Background: X.X% | Ashlar: X.X% | Polygonal: X.X% | Quarry: X.X% | → Predicted
+    """
+    n_classes = min(class_scores.shape[2], len(CLASS_NAMES))
+    
+    print("\n" + "=" * 70)
+    print("SAMPLE POINT PROBABILITY DATA")
+    print("=" * 70)
+    print(f"Image: {image_name}")
+    print("-" * 70)
+    for i, (x, y) in enumerate(sample_points):
+        probs = class_scores[y, x, :n_classes]
+        predicted = CLASS_NAMES[np.argmax(probs)]
+        prob_strs = [f"{CLASS_NAMES[j]}: {probs[j]*100:.1f}%" for j in range(n_classes)]
+        print(f"Point {i+1}: ({x}, {y}) | {' | '.join(prob_strs)} | → {predicted}")
+    print("=" * 70 + "\n")
+    
+    return [(x, y, class_scores[y, x, :n_classes].tolist()) for x, y in sample_points]
+
+
 # ============================================================================
 # MAIN FIGURE FOR PAPER - 2x2 Grid Style (like Figures 7-10)
 # ============================================================================
 
 def create_probability_comparison_2x2(class_scores, segmentation, rgb_image,
-                                       sample_point=None, save_path=None):
+                                       sample_point=None, save_path=None,
+                                       image_name="image"):
     """
     Create a 2x2 comparison figure matching your paper's style (Figures 7-10).
     
     Layout:
         Orthomosaic      |  Segmentation
         Confidence Map   |  Probability Distribution
+    
+    Also prints simple text output for the sample point.
     """
     plt.rcParams['font.family'] = 'sans-serif'
     plt.rcParams['font.size'] = 10
@@ -78,6 +106,20 @@ def create_probability_comparison_2x2(class_scores, segmentation, rgb_image,
         sample_point = (w // 2, h // 2)
     
     n_classes = min(class_scores.shape[2], len(CLASS_NAMES))
+    
+    # ========== SIMPLE TEXT OUTPUT ==========
+    x, y = sample_point
+    probs = class_scores[y, x, :n_classes]
+    predicted = CLASS_NAMES[np.argmax(probs)]
+    prob_strs = [f"{CLASS_NAMES[j]}: {probs[j]*100:.1f}%" for j in range(n_classes)]
+    
+    print("\n" + "=" * 70)
+    print("SAMPLE POINT PROBABILITY DATA")
+    print("=" * 70)
+    print(f"Image: {image_name}")
+    print("-" * 70)
+    print(f"Point 1: ({x}, {y}) | {' | '.join(prob_strs)} | → {predicted}")
+    print("=" * 70 + "\n")
     
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), facecolor='white')
     
@@ -161,13 +203,16 @@ def create_probability_comparison_2x2(class_scores, segmentation, rgb_image,
 
 
 def create_multi_point_analysis(class_scores, segmentation, rgb_image,
-                                 sample_points=None, save_path=None):
+                                 sample_points=None, save_path=None,
+                                 image_name="image"):
     """
     Create figure with multiple sample points showing probability distributions.
     
     Layout:
         Row 1: Orthomosaic | Segmentation | Confidence
         Row 2: Bar charts for each sample point
+    
+    Also prints simple text output for each sample point.
     """
     plt.rcParams['font.family'] = 'sans-serif'
     
@@ -178,6 +223,21 @@ def create_multi_point_analysis(class_scores, segmentation, rgb_image,
             (w // 2, h // 2),
             (3 * w // 4, 2 * h // 3)
         ]
+    
+    n_classes = min(class_scores.shape[2], len(CLASS_NAMES))
+    
+    # ========== SIMPLE TEXT OUTPUT ==========
+    print("\n" + "=" * 70)
+    print("SAMPLE POINT PROBABILITY DATA")
+    print("=" * 70)
+    print(f"Image: {image_name}")
+    print("-" * 70)
+    for i, (x, y) in enumerate(sample_points):
+        probs = class_scores[y, x, :n_classes]
+        predicted = CLASS_NAMES[np.argmax(probs)]
+        prob_strs = [f"{CLASS_NAMES[j]}: {probs[j]*100:.1f}%" for j in range(n_classes)]
+        print(f"Point {i+1}: ({x}, {y}) | {' | '.join(prob_strs)} | → {predicted}")
+    print("=" * 70 + "\n")
     
     n_points = len(sample_points)
     n_classes = min(class_scores.shape[2], len(CLASS_NAMES))
@@ -503,7 +563,8 @@ def run_all_probability_visualizations(class_scores, segmentation, rgb_image,
     create_probability_comparison_2x2(
         class_scores, segmentation, rgb_image,
         sample_point=sample_points[0],
-        save_path=os.path.join(output_dir, f"{image_name}_prob_comparison_2x2.png")
+        save_path=os.path.join(output_dir, f"{image_name}_prob_comparison_2x2.png"),
+        image_name=image_name
     )
     
     # 2. Multi-point analysis
@@ -511,7 +572,8 @@ def run_all_probability_visualizations(class_scores, segmentation, rgb_image,
     create_multi_point_analysis(
         class_scores, segmentation, rgb_image,
         sample_points=sample_points,
-        save_path=os.path.join(output_dir, f"{image_name}_multi_point_analysis.png")
+        save_path=os.path.join(output_dir, f"{image_name}_multi_point_analysis.png"),
+        image_name=image_name
     )
     
     # 3. Confidence comparison
