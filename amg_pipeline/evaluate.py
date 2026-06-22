@@ -51,10 +51,18 @@ def metrics_within_roi(gt_mask, pred_mask, roi_mask):
     iou_scores = {}
     for idx, name in enumerate(CLASS_NAMES):
         gt_b = (gt_flat == idx)
+        # A class is ABSENT from this wall iff it has zero GT pixels in the ROI.
+        # Drop it (NaN) rather than scoring it 0.0: a model that hallucinates a few
+        # pixels of an absent class would otherwise make union>0 and produce a
+        # spurious 0.0 that deflates the mean. Those false positives are still
+        # penalised, because they reduce the IoU of the present class they overlap.
+        if gt_b.sum() == 0:
+            iou_scores[name] = np.nan
+            continue
         pred_b = (pred_flat == idx)
         inter = np.logical_and(gt_b, pred_b).sum()
-        union = np.logical_or(gt_b, pred_b).sum()
-        iou_scores[name] = (np.nan if union == 0 else inter / union)
+        union = np.logical_or(gt_b, pred_b).sum()  # > 0 guaranteed (gt_b.sum() > 0)
+        iou_scores[name] = inter / union
 
     report = classification_report(
         gt_flat, pred_flat, labels=list(range(len(CLASS_NAMES))),
@@ -63,11 +71,16 @@ def metrics_within_roi(gt_mask, pred_mask, roi_mask):
     f1 = {}
     for name in CLASS_NAMES:
         r = report.get(name, {})
-        f1[name] = {"precision": r.get("precision", np.nan),
-                    "recall": r.get("recall", np.nan),
-                    "f1-score": r.get("f1-score", np.nan),
-                    "support": r.get("support", 0)}
-    f1["macro_avg"] = report["macro avg"]["f1-score"]
+        support = r.get("support", 0)
+        absent = (support == 0)  # same absence rule as IoU: zero GT support
+        f1[name] = {"precision": np.nan if absent else r.get("precision", np.nan),
+                    "recall": np.nan if absent else r.get("recall", np.nan),
+                    "f1-score": np.nan if absent else r.get("f1-score", np.nan),
+                    "support": support}
+    # macro_F1 = mean F1 over the stone classes that are present (NaN-aware),
+    # excluding Background and absent classes — consistent with IoU_mean_stones.
+    stone_f1 = [f1[c]["f1-score"] for c in STONE_CLASSES]
+    f1["macro_avg"] = float(np.nanmean(stone_f1)) if not all(np.isnan(stone_f1)) else np.nan
     f1["weighted_avg"] = report["weighted avg"]["f1-score"]
     return iou_scores, f1
 
