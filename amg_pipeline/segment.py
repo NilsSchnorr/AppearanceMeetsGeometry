@@ -55,11 +55,24 @@ def create_sliding_windows(image, window_size, stride):
             positions.append((y_start, x_start, y_end, x_end))
     return windows, positions
 
+def _resize_multichannel(img, size, interpolation):
+    """cv2.resize only accepts <=4 channels; for more (e.g. the 7ch stack),
+    resize in <=4-channel blocks and re-concatenate. Numerically identical to
+    resizing each component separately, since resize is per-channel."""
+    c = img.shape[2] if img.ndim == 3 else 1
+    if c <= 4:
+        out = cv2.resize(img, size, interpolation=interpolation)
+        return out[:, :, None] if out.ndim == 2 else out
+    blocks = []
+    for s in range(0, c, 4):
+        r = cv2.resize(img[:, :, s:s+4], size, interpolation=interpolation)
+        blocks.append(r[:, :, None] if r.ndim == 2 else r)
+    return np.concatenate(blocks, axis=2)
 
 def _segment_window(model, stacked_window, model_size, window_size, device):
     """stacked_window is already the correct channel stack (3/4/7) in HWC uint8."""
     try:
-        resized = cv2.resize(stacked_window, model_size, interpolation=cv2.INTER_AREA)
+        resized = _resize_multichannel(stacked_window, model_size, cv2.INTER_AREA)
         norm = resized.astype("float32") / 255.0
         tensor = torch.FloatTensor(norm).permute(2, 0, 1).unsqueeze(0).to(device)
         with torch.no_grad():
