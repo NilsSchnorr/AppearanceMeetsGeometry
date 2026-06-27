@@ -17,14 +17,14 @@ Fields are labelled by which review step first needs them:
 
   LIVE-with-reproducing-default (implemented now, defaulted to reproduce the
   original behavior exactly; later steps just change the value):
-    width_mult        -> "base"  (Step 2 sweeps slim/base/wide)
-    ce_weight         -> 0.5      (Step 3 shifts the CE/Dice ratio)
-    train_fraction    -> 1.0      (Step 4 reduces training data 100/75/50/25%)
+    width_mult           -> "base"  (Step 2 sweeps slim/base/wide)
+    ce_weight            -> 0.5     (Step 3 shifts the CE/Dice ratio)
+    use_weighted_sampler -> False   (Step 3: quarry patch oversampling)
+    sampler_weight       -> 3.0     (Step 3: weight for quarry-containing tiles)
+    train_fraction       -> 1.0     (Step 4 reduces training data 100/75/50/25%)
 
   RESERVED (key present + validated, logic intentionally NOT implemented yet;
   setting them raises a clear error so they can't be used by accident):
-    use_weighted_sampler -> False (Step 3: WeightedRandomSampler)
-    sampler_weight       -> 3.0   (Step 3)
     eval_type            -> "roi" (Step 5 adds "gap"/"stone_detection"/"basic")
 """
 
@@ -78,11 +78,11 @@ class RunConfig:
     # ---- LIVE-with-reproducing-default ------------------------------------
     width_mult: str = "base"           # Step 2
     ce_weight: float = 0.5             # Step 3; dice weight = 1 - ce_weight
+    use_weighted_sampler: bool = False # Step 3: oversample quarry-containing tiles
+    sampler_weight: float = 3.0        # Step 3: weight for quarry tiles (1.0 = off)
     train_fraction: float = 1.0        # Step 4
 
     # ---- RESERVED (not implemented yet) -----------------------------------
-    use_weighted_sampler: bool = False  # Step 3
-    sampler_weight: float = 3.0         # Step 3
     eval_type: str = "roi"              # Step 5
 
     # -----------------------------------------------------------------------
@@ -102,12 +102,9 @@ class RunConfig:
             raise ValueError(f"train_fraction must be in (0,1]; got {self.train_fraction}")
         if self.roi_operation not in ("closing", "dilation"):
             raise ValueError(f"roi_operation must be closing/dilation; got {self.roi_operation!r}")
+        if self.sampler_weight <= 0:
+            raise ValueError(f"sampler_weight must be > 0; got {self.sampler_weight}")
         # Reserved-feature guards: fail loudly rather than silently misbehave.
-        if self.use_weighted_sampler:
-            raise NotImplementedError(
-                "use_weighted_sampler is reserved for Step 3 (oversampling) and is "
-                "not implemented yet. Leave it False for the Step-1 rerun."
-            )
         if self.eval_type != "roi":
             raise NotImplementedError(
                 f"eval_type={self.eval_type!r} is reserved for Step 5 (full statistics "
@@ -144,7 +141,8 @@ def make_run_id(config: RunConfig) -> str:
     Later steps add axes by extending this function (the components are kept
     explicit and ordered so the names stay readable and stable):
       Step 2: prepend width      -> "{width}_{channels}ch_run{N}"  (when != base)
-      Step 3: append sampler/loss tag
+      Step 3: (no run_id change) oversampling/loss variants are isolated by a
+              distinct experiment_name; full provenance lives in config.json
       Step 4: append "_frac{pct}" (when train_fraction != 1.0)
     Only the non-default axes are encoded, so Step-1 ids stay clean.
     """

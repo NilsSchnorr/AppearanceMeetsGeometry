@@ -26,13 +26,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from sklearn.model_selection import train_test_split
 from datetime import datetime
 from tqdm import tqdm
 
 from .model import MultiUNet, initialize_weights, count_parameters
-from .data import load_training_tiles, encode_masks, CLASS_NAMES, CLASS_COLORS_RGB
+from .data import (load_training_tiles, encode_masks, make_quarry_oversampling_weights,
+                   CLASS_NAMES, CLASS_COLORS_RGB)
 from . import paths
 
 
@@ -91,9 +92,6 @@ def train(config, force=False):
         print(f"[skip-if-exists] checkpoint present, skipping training: {ckpt_path}")
         return {"status": "skipped", "checkpoint": ckpt_path}
 
-    if config.use_weighted_sampler:  # belt-and-braces; validate() already blocks this
-        raise NotImplementedError("WeightedRandomSampler is reserved for Step 3.")
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _set_seed(config.seed)
     print(f"=== train {paths.checkpoint_dir(config)} | device={device} | seed={config.seed} ===")
@@ -134,8 +132,27 @@ def train(config, force=False):
     optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-7)
     print(f"params={count_parameters(model):,} | width={config.width_mult} | ce/dice={config.ce_weight}/{1-config.ce_weight}")
 
-    train_loader = DataLoader(TensorDataset(X_train_t, y_train_t),
-                              batch_size=config.batch_size, shuffle=True)  # unseeded, as originals
+    train_ds = TensorDataset(X_train_t, y_train_t)
+    if config.use_weighted_sampler:
+        # Step 3 oversampling: tiles containing quarry (class 3) get sampler_weight,
+        # all others 1.0; drawn WITH replacement. num_samples == #train tiles keeps
+        # epoch length (and thus step count) identical to the base run. No explicit
+        # generator is passed, so the sampler shares the global RNG seeded in
+        # _set_seed -- exactly like the shuffle=True path it replaces.
+        weights, n_pos, n_tot = make_quarry_oversampling_weights(
+            y_train, config.sampler_weight)
+        sampler = WeightedRandomSampler(
+            torch.as_tensor(weights, dtype=torch.double),
+            num_samples=len(weights), replacement=True)
+        exposure = (n_pos * config.sampler_weight) / (
+            n_pos * config.sampler_weight + (n_tot - n_pos))
+        print(f"[oversampling] quarry tiles {n_pos}/{n_tot} "
+              f"(natural {n_pos / n_tot:.1%}) | weight={config.sampler_weight} "
+              f"-> expected sampled exposure ~{exposure:.1%}")
+        train_loader = DataLoader(train_ds, batch_size=config.batch_size, sampler=sampler)
+    else:
+        train_loader = DataLoader(train_ds, batch_size=config.batch_size,
+                                  shuffle=True)  # unseeded, as originals
     val_loader = DataLoader(TensorDataset(X_val_t, y_val_t),
                             batch_size=config.batch_size, shuffle=False)
 

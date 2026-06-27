@@ -117,6 +117,39 @@ def encode_masks(masks):
     return enc.reshape(n, h, w), le
 
 
+def make_quarry_oversampling_weights(masks_enc, sampler_weight, target_class=3):
+    """
+    Per-tile sampling weights for a WeightedRandomSampler (Step 3 oversampling).
+
+    Tiles that contain at least one pixel of `target_class` (3 == Quarry, per the
+    LabelEncoder ordering above) receive `sampler_weight`; every other tile
+    receives 1.0. This is the binary patch-level oversampling scheme agreed for
+    the class-imbalance revision: it raises the model's exposure to quarry-
+    containing contexts without touching the data or the loss. A weight of 1.0
+    reproduces uniform sampling exactly.
+
+    Note the exposure is non-linear in the weight. With n_pos quarry tiles and
+    n_neg others, the expected fraction of draws landing on a quarry tile is
+    (n_pos * w) / (n_pos * w + n_neg), NOT w x the natural fraction. train.py
+    logs the realized fraction at run time so it can be confirmed.
+
+    Parameters
+    ----------
+    masks_enc : np.ndarray, shape (N, H, W), integer class indices in {0,1,2,3}.
+    sampler_weight : float, weight for quarry-containing tiles (>0; >1 oversamples).
+    target_class : int, the class whose presence triggers up-weighting (default 3).
+
+    Returns
+    -------
+    weights : np.ndarray, shape (N,), float64 - one weight per tile.
+    n_pos   : int - number of tiles containing target_class.
+    n_total : int - total number of tiles.
+    """
+    present = (masks_enc == target_class).reshape(masks_enc.shape[0], -1).any(axis=1)
+    weights = np.where(present, float(sampler_weight), 1.0).astype("float64")
+    return weights, int(present.sum()), int(present.shape[0])
+
+
 def rgb_to_class_mask(rgb_image, verbose=False):
     """
     Convert an RGB mask to class indices. Unmapped pixels (compression /
