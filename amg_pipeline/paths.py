@@ -21,7 +21,11 @@ def experiment_dir(config: RunConfig) -> str:
 
 
 def checkpoint_dir(config: RunConfig) -> str:
-    return os.path.join(experiment_dir(config), "checkpoints", make_run_id(config))
+    # Stage-0 stress test: checkpoints may be READ from another experiment
+    # (checkpoint_experiment), while all outputs stay under experiment_name.
+    # With the default "" this reproduces the original behavior exactly.
+    exp = getattr(config, "checkpoint_experiment", "") or config.experiment_name
+    return os.path.join(config.experiments_root, exp, "checkpoints", make_run_id(config))
 
 
 def checkpoint_path(config: RunConfig) -> str:

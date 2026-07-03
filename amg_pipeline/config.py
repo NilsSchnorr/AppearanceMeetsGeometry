@@ -22,6 +22,9 @@ Fields are labelled by which review step first needs them:
     use_weighted_sampler -> False   (Step 3: quarry patch oversampling)
     sampler_weight       -> 3.0     (Step 3: weight for quarry-containing tiles)
     train_fraction       -> 1.0     (Step 4 reduces training data 100/75/50/25%)
+    checkpoint_experiment-> ""      (Stage 0 stress test: read checkpoints from
+                                     another experiment; "" = this experiment,
+                                     reproducing the original behavior)
 
   RESERVED (key present + validated, logic intentionally NOT implemented yet;
   setting them raises a clear error so they can't be used by accident):
@@ -81,6 +84,7 @@ class RunConfig:
     use_weighted_sampler: bool = False # Step 3: oversample quarry-containing tiles
     sampler_weight: float = 3.0        # Step 3: weight for quarry tiles (1.0 = off)
     train_fraction: float = 1.0        # Step 4
+    checkpoint_experiment: str = ""    # Stage 0 stress: checkpoint source ("" = own experiment)
 
     # ---- RESERVED (not implemented yet) -----------------------------------
     eval_type: str = "roi"              # Step 5

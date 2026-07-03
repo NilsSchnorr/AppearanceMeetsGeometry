@@ -7,6 +7,8 @@ Public API:
     segment(config)               (segment.py)
     evaluate(config)              (evaluate.py)
     run_sweep(...)                (sweep.py)
+    run_stress(...), collect_stress_manifests(...)    (stress.py, Stage 0)
+    run_boundary_eval(...)        (boundary.py, Stage 0)
     verify_architecture(), verify_checkpoint_loads()  (verify.py)
 
 The three original training/segmentation/evaluation notebooks were extracted
@@ -19,10 +21,13 @@ from .train import train
 from .segment import segment
 from .evaluate import evaluate, append_to_manifest
 from .sweep import run_sweep, build_configs
+from .stress import run_stress, collect_stress_manifests
+from .boundary import run_boundary_eval
 from .verify import verify_architecture, verify_checkpoint_loads
 
 __all__ = [
     "RunConfig", "make_run_id", "train", "segment", "evaluate",
     "append_to_manifest", "run_sweep", "build_configs",
+    "run_stress", "collect_stress_manifests", "run_boundary_eval",
     "verify_architecture", "verify_checkpoint_loads",
 ]
