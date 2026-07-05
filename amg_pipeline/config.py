@@ -25,6 +25,10 @@ Fields are labelled by which review step first needs them:
     checkpoint_experiment-> ""      (Stage 0 stress test: read checkpoints from
                                      another experiment; "" = this experiment,
                                      reproducing the original behavior)
+    norm                 -> "none"  (Stage 1: normalization inside DoubleConv;
+                                     "groupnorm" inserts GroupNorm(8) after each
+                                     conv. "none" reproduces the original
+                                     architecture byte-identically)
 
   RESERVED (key present + validated, logic intentionally NOT implemented yet;
   setting them raises a clear error so they can't be used by accident):
@@ -85,6 +89,7 @@ class RunConfig:
     sampler_weight: float = 3.0        # Step 3: weight for quarry tiles (1.0 = off)
     train_fraction: float = 1.0        # Step 4
     checkpoint_experiment: str = ""    # Stage 0 stress: checkpoint source ("" = own experiment)
+    norm: str = "none"                 # Stage 1: "none" or "groupnorm" (DoubleConv normalization)
 
     # ---- RESERVED (not implemented yet) -----------------------------------
     eval_type: str = "roi"              # Step 5
@@ -108,6 +113,8 @@ class RunConfig:
             raise ValueError(f"roi_operation must be closing/dilation; got {self.roi_operation!r}")
         if self.sampler_weight <= 0:
             raise ValueError(f"sampler_weight must be > 0; got {self.sampler_weight}")
+        if self.norm not in ("none", "groupnorm"):
+            raise ValueError(f"norm must be none/groupnorm; got {self.norm!r}")
         # Reserved-feature guards: fail loudly rather than silently misbehave.
         if self.eval_type != "roi":
             raise NotImplementedError(
@@ -148,6 +155,8 @@ def make_run_id(config: RunConfig) -> str:
       Step 3: (no run_id change) oversampling/loss variants are isolated by a
               distinct experiment_name; full provenance lives in config.json
       Step 4: append "_frac{pct}" (when train_fraction != 1.0)
+      Stage 1: (no run_id change) recipe variants (norm, ...) are isolated by a
+              distinct experiment_name, exactly like Step 3
     Only the non-default axes are encoded, so Step-1 ids stay clean.
     """
     parts = []

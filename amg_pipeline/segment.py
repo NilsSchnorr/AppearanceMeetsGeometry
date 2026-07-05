@@ -30,7 +30,9 @@ def _load_model(ckpt_path, device):
     n_classes = checkpoint.get("n_classes", 4)
     img_channels = checkpoint.get("img_channels", 7)
     width_mult = checkpoint.get("width_mult", "base")
-    model = MultiUNet(n_channels=img_channels, n_classes=n_classes, width_mult=width_mult)
+    norm = checkpoint.get("norm", "none")  # old checkpoints predate the field -> original arch
+    model = MultiUNet(n_channels=img_channels, n_classes=n_classes, width_mult=width_mult,
+                      norm=norm)
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
     model.eval()

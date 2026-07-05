@@ -126,11 +126,12 @@ def train(config, force=False):
 
     # ---- model / loss / optim --------------------------------------------
     model = MultiUNet(n_channels=img_channels, n_classes=n_classes,
-                      width_mult=config.width_mult).to(device)
+                      width_mult=config.width_mult, norm=config.norm).to(device)
     initialize_weights(model)
     criterion = CEDiceLoss(ce_weight=config.ce_weight, weight=None)  # equal weights, as originals
     optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-7)
-    print(f"params={count_parameters(model):,} | width={config.width_mult} | ce/dice={config.ce_weight}/{1-config.ce_weight}")
+    print(f"params={count_parameters(model):,} | width={config.width_mult} | "
+          f"norm={config.norm} | ce/dice={config.ce_weight}/{1-config.ce_weight}")
 
     train_ds = TensorDataset(X_train_t, y_train_t)
     if config.use_weighted_sampler:
@@ -216,6 +217,7 @@ def train(config, force=False):
         "class_colors": CLASS_COLORS_RGB,
         "img_channels": img_channels,
         "width_mult": config.width_mult,
+        "norm": config.norm,
         "seed": config.seed,
         "run_number": config.run_number,
     }, ckpt_path)

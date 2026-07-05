@@ -50,10 +50,13 @@ def verify_checkpoint_loads(ckpt_path, channels, verbose=True):
     img_channels = ckpt.get("img_channels", channels)
     n_classes = ckpt.get("n_classes", 4)
     width_mult = ckpt.get("width_mult", "base")
-    model = MultiUNet(n_channels=img_channels, n_classes=n_classes, width_mult=width_mult)
+    norm = ckpt.get("norm", "none")  # old checkpoints predate the field -> original arch
+    model = MultiUNet(n_channels=img_channels, n_classes=n_classes, width_mult=width_mult,
+                      norm=norm)
     missing, unexpected = model.load_state_dict(ckpt["model_state_dict"], strict=False)
     if verbose:
-        print(f"[{ckpt_path}] img_channels={img_channels} n_classes={n_classes} width={width_mult}")
+        print(f"[{ckpt_path}] img_channels={img_channels} n_classes={n_classes} "
+              f"width={width_mult} norm={norm}")
         print(f"  missing keys:    {list(missing)}")
         print(f"  unexpected keys: {list(unexpected)}")
     if missing or unexpected:
