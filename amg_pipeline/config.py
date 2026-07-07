@@ -29,6 +29,10 @@ Fields are labelled by which review step first needs them:
                                      "groupnorm" inserts GroupNorm(8) after each
                                      conv. "none" reproduces the original
                                      architecture byte-identically)
+    photo_aug            -> "none"  (Stage 1: on-the-fly photometric jitter on
+                                     the COLOR channels of training tiles only;
+                                     "rgb" enables it (no-op for 3ch). "none"
+                                     reproduces the original training exactly)
 
   RESERVED (key present + validated, logic intentionally NOT implemented yet;
   setting them raises a clear error so they can't be used by accident):
@@ -90,6 +94,7 @@ class RunConfig:
     train_fraction: float = 1.0        # Step 4
     checkpoint_experiment: str = ""    # Stage 0 stress: checkpoint source ("" = own experiment)
     norm: str = "none"                 # Stage 1: "none" or "groupnorm" (DoubleConv normalization)
+    photo_aug: str = "none"            # Stage 1: "none" or "rgb" (train-time color jitter)
 
     # ---- RESERVED (not implemented yet) -----------------------------------
     eval_type: str = "roi"              # Step 5
@@ -115,6 +120,8 @@ class RunConfig:
             raise ValueError(f"sampler_weight must be > 0; got {self.sampler_weight}")
         if self.norm not in ("none", "groupnorm"):
             raise ValueError(f"norm must be none/groupnorm; got {self.norm!r}")
+        if self.photo_aug not in ("none", "rgb"):
+            raise ValueError(f"photo_aug must be none/rgb; got {self.photo_aug!r}")
         # Reserved-feature guards: fail loudly rather than silently misbehave.
         if self.eval_type != "roi":
             raise NotImplementedError(

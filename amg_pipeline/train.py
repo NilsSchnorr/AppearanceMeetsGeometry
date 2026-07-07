@@ -34,6 +34,7 @@ from tqdm import tqdm
 from .model import MultiUNet, initialize_weights, count_parameters
 from .data import (load_training_tiles, encode_masks, make_quarry_oversampling_weights,
                    CLASS_NAMES, CLASS_COLORS_RGB)
+from .augment import PhotometricAugment
 from . import paths
 
 
@@ -131,9 +132,19 @@ def train(config, force=False):
     criterion = CEDiceLoss(ce_weight=config.ce_weight, weight=None)  # equal weights, as originals
     optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-7)
     print(f"params={count_parameters(model):,} | width={config.width_mult} | "
-          f"norm={config.norm} | ce/dice={config.ce_weight}/{1-config.ce_weight}")
+          f"norm={config.norm} | photo_aug={config.photo_aug} | "
+          f"ce/dice={config.ce_weight}/{1-config.ce_weight}")
 
     train_ds = TensorDataset(X_train_t, y_train_t)
+    if config.photo_aug == "rgb":
+        if config.channels in (4, 7):
+            # Stage 1 Candidate 2: per-sample photometric jitter on the color
+            # channels only (alpha + normals untouched). Wraps ONLY the train
+            # split; validation and inference always see clean data.
+            train_ds = PhotometricAugment(train_ds)
+            print("[photo_aug] on-the-fly RGB jitter active (train split only)")
+        else:
+            print("[photo_aug] 3ch has no color channels -> no-op (trains as baseline)")
     if config.use_weighted_sampler:
         # Step 3 oversampling: tiles containing quarry (class 3) get sampler_weight,
         # all others 1.0; drawn WITH replacement. num_samples == #train tiles keeps
@@ -218,6 +229,7 @@ def train(config, force=False):
         "img_channels": img_channels,
         "width_mult": config.width_mult,
         "norm": config.norm,
+        "photo_aug": config.photo_aug,
         "seed": config.seed,
         "run_number": config.run_number,
     }, ckpt_path)
