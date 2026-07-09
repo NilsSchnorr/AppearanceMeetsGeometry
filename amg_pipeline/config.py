@@ -33,6 +33,12 @@ Fields are labelled by which review step first needs them:
                                      the COLOR channels of training tiles only;
                                      "rgb" enables it (no-op for 3ch). "none"
                                      reproduces the original training exactly)
+    lr_schedule          -> "constant" (Stage 1 C3: "cosine" adds cosine decay
+                                     of the LR to ~0 over n_epochs. "constant"
+                                     reproduces the original training exactly)
+    checkpoint_filename  -> "model.pth" (which checkpoint file to LOAD for
+                                     segmentation; "model_best.pth" evaluates
+                                     the best-val checkpoint written alongside)
 
   RESERVED (key present + validated, logic intentionally NOT implemented yet;
   setting them raises a clear error so they can't be used by accident):
@@ -95,6 +101,8 @@ class RunConfig:
     checkpoint_experiment: str = ""    # Stage 0 stress: checkpoint source ("" = own experiment)
     norm: str = "none"                 # Stage 1: "none" or "groupnorm" (DoubleConv normalization)
     photo_aug: str = "none"            # Stage 1: "none" or "rgb" (train-time color jitter)
+    lr_schedule: str = "constant"      # Stage 1 C3: "constant" or "cosine"
+    checkpoint_filename: str = "model.pth"  # which checkpoint to load at inference
 
     # ---- RESERVED (not implemented yet) -----------------------------------
     eval_type: str = "roi"              # Step 5
@@ -122,6 +130,10 @@ class RunConfig:
             raise ValueError(f"norm must be none/groupnorm; got {self.norm!r}")
         if self.photo_aug not in ("none", "rgb"):
             raise ValueError(f"photo_aug must be none/rgb; got {self.photo_aug!r}")
+        if self.lr_schedule not in ("constant", "cosine"):
+            raise ValueError(f"lr_schedule must be constant/cosine; got {self.lr_schedule!r}")
+        if not self.checkpoint_filename or not self.checkpoint_filename.endswith(".pth"):
+            raise ValueError(f"checkpoint_filename must be a .pth name; got {self.checkpoint_filename!r}")
         # Reserved-feature guards: fail loudly rather than silently misbehave.
         if self.eval_type != "roi":
             raise NotImplementedError(

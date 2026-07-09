@@ -29,7 +29,10 @@ def checkpoint_dir(config: RunConfig) -> str:
 
 
 def checkpoint_path(config: RunConfig) -> str:
-    return os.path.join(checkpoint_dir(config), "model.pth")
+    # checkpoint_filename (default "model.pth") lets eval-only experiments load
+    # the best-val checkpoint ("model_best.pth") through the same machinery.
+    fname = getattr(config, "checkpoint_filename", "model.pth") or "model.pth"
+    return os.path.join(checkpoint_dir(config), fname)
 
 
 def config_json_path(config: RunConfig) -> str:

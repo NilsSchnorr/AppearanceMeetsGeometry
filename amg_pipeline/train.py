@@ -131,8 +131,14 @@ def train(config, force=False):
     initialize_weights(model)
     criterion = CEDiceLoss(ce_weight=config.ce_weight, weight=None)  # equal weights, as originals
     optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-7)
+    scheduler = None
+    if config.lr_schedule == "cosine":
+        # Stage 1 C3: cosine decay from config.lr to ~0 over n_epochs (stepped
+        # once per epoch). "constant" leaves the original behavior untouched.
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.n_epochs)
     print(f"params={count_parameters(model):,} | width={config.width_mult} | "
           f"norm={config.norm} | photo_aug={config.photo_aug} | "
+          f"lr_schedule={config.lr_schedule} | "
           f"ce/dice={config.ce_weight}/{1-config.ce_weight}")
 
     train_ds = TensorDataset(X_train_t, y_train_t)
@@ -169,7 +175,13 @@ def train(config, force=False):
                             batch_size=config.batch_size, shuffle=False)
 
     history = {k: [] for k in ("loss", "val_loss", "accuracy", "val_accuracy",
-                               "iou_metric", "val_iou_metric")}
+                               "iou_metric", "val_iou_metric", "lr")}
+
+    # Stage 1 C3: track the best-val-IoU epoch and keep a CPU copy of its
+    # weights; saved alongside the final checkpoint as model_best.pth. The
+    # paper convention (final-epoch checkpoint) is unchanged — this is
+    # instrumentation, evaluated separately via checkpoint_filename.
+    best_val_iou, best_epoch, best_state = float("-inf"), -1, None
 
     print(f"Starting training at {datetime.now():%Y-%m-%d %H:%M:%S}")
     for epoch in range(config.n_epochs):
@@ -209,6 +221,16 @@ def train(config, force=False):
         history["val_accuracy"].append(v_correct / v_total)
         history["iou_metric"].append(tr_iou / len(train_loader))
         history["val_iou_metric"].append(v_iou / len(val_loader))
+        history["lr"].append(optimizer.param_groups[0]["lr"])
+
+        if history["val_iou_metric"][-1] > best_val_iou:
+            best_val_iou = history["val_iou_metric"][-1]
+            best_epoch = epoch + 1
+            best_state = {k: v.detach().cpu().clone()
+                          for k, v in model.state_dict().items()}
+
+        if scheduler is not None:
+            scheduler.step()
 
         if (epoch + 1) % 10 == 0:
             print(f"[{epoch+1}/{config.n_epochs}] "
@@ -217,12 +239,7 @@ def train(config, force=False):
 
     # ---- save checkpoint + provenance ------------------------------------
     os.makedirs(paths.checkpoint_dir(config), exist_ok=True)
-    torch.save({
-        "epoch": config.n_epochs,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "loss": history["loss"][-1],
-        "history": history,
+    common = {
         "n_classes": n_classes,
         "class_names": CLASS_NAMES,
         "class_colors": CLASS_COLORS_RGB,
@@ -230,11 +247,33 @@ def train(config, force=False):
         "width_mult": config.width_mult,
         "norm": config.norm,
         "photo_aug": config.photo_aug,
+        "lr_schedule": config.lr_schedule,
         "seed": config.seed,
         "run_number": config.run_number,
+        "best_epoch": best_epoch,
+        "best_val_iou": best_val_iou,
+    }
+    torch.save({
+        "epoch": config.n_epochs,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "loss": history["loss"][-1],
+        "history": history,
+        "selection": "final_epoch",
+        **common,
     }, ckpt_path)
+    # best-val companion (same schema; loadable via checkpoint_filename)
+    best_path = os.path.join(paths.checkpoint_dir(config), "model_best.pth")
+    torch.save({
+        "epoch": best_epoch,
+        "model_state_dict": best_state,
+        "history": history,
+        "selection": "best_val",
+        **common,
+    }, best_path)
     config.to_json(paths.config_json_path(config))
     print(f"saved checkpoint -> {ckpt_path}")
+    print(f"saved best-val   -> {best_path} (epoch {best_epoch}, val IoU {best_val_iou:.4f})")
     print(f"saved config.json -> {paths.config_json_path(config)}")
 
     return {"status": "trained", "checkpoint": ckpt_path,
