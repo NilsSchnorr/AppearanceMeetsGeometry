@@ -102,3 +102,4 @@ backup/
 .DS_Store
 .DS_Store
 01_image_preparation_for_ML/heightmap_mismatch_fix.ipynb
+experiments/v2_baseline_ens/confidence/7ch_run1/wall1_probs.npz

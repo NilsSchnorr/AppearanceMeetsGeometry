@@ -1,0 +1,2 @@
+run_id,channels,wall,n_roi_pixels,mean_confidence_roi,median_confidence_roi,frac_above_090_roi,n_stone_pixels,mean_confidence_stone,median_confidence_stone,frac_above_090_stone,raster_agreement
+7ch_run1,7,wall1,12591783,0.9103215336799622,0.9946489334106445,0.7196631326953459,11922932,0.9169431924819946,0.9961966276168823,0.7409467738304638,0.9999778264160739
