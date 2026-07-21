@@ -29,6 +29,8 @@ Outputs (next to the npz):
 Usage (from the repo root, npz path is the default):
     python 04_segmentation_evaluation/confidence_probe_readout.py
     python ...readout.py --points "1200,2100 5300,1800 9800,2600 14500,2200"
+    python ...readout.py --points "... ... ... 14500,2200,quarry"        # snap to class
+    python ...readout.py --points "... ... ... 14500,2200,quarry@0.55"   # + conf target
 """
 
 import argparse
@@ -120,6 +122,59 @@ def pick_probes(seg, conf, gt_stone=None):
     return points
 
 
+def snap_to_class(seg, target_class, x, y, gt_stone=None, conf=None,
+                  conf_target=None):
+    """Snap (x, y) to an interior pixel predicted as target_class (eroded by
+    EDGE_MARGIN as in pick_probes; the margin is halved automatically while
+    the eroded mask comes up empty — small Quarry stones can vanish under the
+    full erosion).
+
+    Without conf_target: the nearest such pixel. With conf_target (0-1): the
+    pixel whose winning confidence is closest to the target, searched within
+    a growing radius around the seed (nearest pixel among confidence ties) —
+    the same argmin |conf - target| criterion pick_probes uses for its
+    ambiguous probes, restricted to one class."""
+    mask = seg == target_class
+    if gt_stone is not None:
+        mask = mask & gt_stone
+    if not mask.any():
+        raise SystemExit(f"snap: no pixels predicted as "
+                         f"{CLASS_NAMES[target_class]}")
+    margin = EDGE_MARGIN
+    interior = np.zeros_like(mask)
+    while margin >= 1:
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (2 * margin + 1, 2 * margin + 1))
+        interior = cv2.erode(mask.astype(np.uint8), kernel).astype(bool)
+        if interior.any():
+            break
+        margin //= 2
+    if not interior.any():
+        interior, margin = mask, 0
+    ys, xs = np.nonzero(interior)
+    d2 = (xs - x) ** 2 + (ys - y) ** 2
+    if conf_target is None:
+        i = int(np.argmin(d2))
+        extra = ""
+    else:
+        r = 250
+        within = d2 <= r * r
+        while not within.any() and r < max(seg.shape):
+            r *= 2
+            within = d2 <= r * r
+        if not within.any():
+            within[:] = True
+        diff = np.abs(conf[ys, xs].astype(np.float32) - conf_target)
+        diff[~within] = np.inf
+        i = int(np.lexsort((d2, np.round(diff, 3)))[0])
+        extra = (f", conf {conf[ys[i], xs[i]] * 100:.0f}% "
+                 f"(target {conf_target * 100:.0f}%, radius {r} px)")
+    print(f"snapped ({x},{y}) -> ({int(xs[i])},{int(ys[i])}) "
+          f"[{CLASS_NAMES[target_class]}{extra}, margin {margin} px, "
+          f"distance {np.sqrt(d2[i]):.0f} px]")
+    return int(xs[i]), int(ys[i])
+
+
 def make_figure(seg, probs, points, out_png):
     h, w = seg.shape
     n_classes = probs.shape[2]
@@ -176,7 +231,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--npz", default=DEFAULT_NPZ)
     ap.add_argument("--points", default=None,
-                    help='override auto-selection: "x,y x,y x,y x,y"')
+                    help='override auto-selection: "x,y x,y x,y x,y"; a pair '
+                         'may carry a class suffix ("x,y,quarry") to snap to '
+                         'the nearest interior pixel predicted as that class, '
+                         'optionally with a confidence target '
+                         '("x,y,quarry@0.55")')
     ap.add_argument("--gt-mask", default=None,
                     help="path to the wall's GT annotation PNG; restricts "
                          "probes to the annotated facade (recommended — "
@@ -210,8 +269,34 @@ def main():
               "stones (may include out-of-masonry-bond structures)")
 
     if args.points:
-        points = [tuple(int(v) for v in p.split(","))
-                  for p in args.points.split()]
+        points = []
+        for tok in args.points.split():
+            parts = tok.split(",")
+            if len(parts) not in (2, 3):
+                raise SystemExit(f"--points token '{tok}' is not "
+                                 f"'x,y' or 'x,y,class'")
+            x, y = int(parts[0]), int(parts[1])
+            if len(parts) == 3:
+                lut = {n.lower(): i for i, n in enumerate(CLASS_NAMES)}
+                name, _, tgt = parts[2].lower().partition("@")
+                if name not in lut:
+                    raise SystemExit(f"unknown class '{parts[2]}' in --points "
+                                     f"(one of: {', '.join(CLASS_NAMES)})")
+                conf_target = None
+                if tgt:
+                    try:
+                        conf_target = float(tgt)
+                    except ValueError:
+                        raise SystemExit(f"bad confidence target '{tgt}' in "
+                                         f"'{tok}' (use e.g. quarry@0.55)")
+                    if conf_target > 1.0:
+                        conf_target /= 100.0   # "quarry@55" == "quarry@0.55"
+                    if not 0.0 < conf_target <= 1.0:
+                        raise SystemExit(f"confidence target '{tgt}' out of "
+                                         f"range (use 0-1 or 1-100)")
+                x, y = snap_to_class(seg, lut[name], x, y, gt_stone,
+                                     conf=conf, conf_target=conf_target)
+            points.append((x, y))
         if len(points) != N_PROBES:
             raise SystemExit(f"--points needs {N_PROBES} x,y pairs")
         for x, y in points:
