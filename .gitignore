@@ -22,7 +22,8 @@ build/
 *.jpeg
 *.png
 *.bmp
-!docs/*.png  # Allow documentation images
+# Allow documentation and example images
+!docs/*.png
 !examples/*.png
 
 # Model files (can be large)
@@ -95,11 +96,5 @@ scratch/
 temp/
 old/
 backup/
-.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
 01_image_preparation_for_ML/heightmap_mismatch_fix.ipynb
 experiments/v2_baseline_ens/confidence/7ch_run1/wall1_probs.npz
