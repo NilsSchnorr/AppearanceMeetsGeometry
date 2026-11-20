@@ -9,6 +9,12 @@ Behavior is a faithful extraction of the original training notebooks:
     not a source of run-to-run variance — see note below)
   - same equal-class-weights behavior (USE_EQUAL_WEIGHTS=True -> weight=None)
 
+P2 (branch p2-fugen, Nov 2026): if config.uses_p2_loss, training uses
+p2_losses.P2Loss (background weight, focal, border weight map, Tversky, clDice)
+and the validation loss stays CEDiceLoss. With all P2 fields at their defaults
+this module behaves exactly as before (same loss object, same split, same
+datasets).
+
 SEEDING (per the agreed plan):
   config.seed drives torch.manual_seed / np.random.seed and reproduces the
   original cudnn settings (deterministic=True alongside benchmark=True, exactly
@@ -33,9 +39,15 @@ from tqdm import tqdm
 
 from .model import MultiUNet, initialize_weights, count_parameters
 from .data import (load_training_tiles, encode_masks, make_quarry_oversampling_weights,
-                   CLASS_NAMES, CLASS_COLORS_RGB)
+                   CLASS_NAMES, CLASS_COLORS_RGB, border_weight_map, tile_roi)
 from .augment import PhotometricAugment
+from .p2_losses import build_p2_loss
 from . import paths
+
+# P2 (Nov 2026): config fields recorded in the checkpoint for provenance.
+P2_FIELDS = ("mask_downsample", "bg_ce_weight", "pixel_loss", "focal_gamma",
+             "weight_map", "wmap_w0", "wmap_sigma", "region_loss", "tversky_stone_fp",
+             "cldice_lambda", "cldice_iters", "cldice_roi_radius_px")
 
 
 class CEDiceLoss(nn.Module):
@@ -111,9 +123,31 @@ def train(config, force=False):
         images, masks_enc = images[keep], masks_enc[keep]
         print(f"train_fraction={config.train_fraction}: using {n_keep}/{len(keep)} tiles")
 
-    X_train, X_val, y_train, y_val = train_test_split(
-        images, masks_enc, test_size=0.1, random_state=0  # split FIXED (see module docstring)
+    # ---- P2 per-tile extras (only when switched on; defaults add nothing) ---
+    extra_names, extras = [], []
+    if getattr(config, "weight_map", False):
+        extra_names.append("wmap")
+        extras.append(np.stack([border_weight_map(m, config.wmap_w0, config.wmap_sigma)
+                                for m in masks_enc]).astype("float32"))
+        print(f"[p2] border weight maps: w0={config.wmap_w0} sigma={config.wmap_sigma} "
+              f"| max {extras[-1].max():.2f} | share > 2: {(extras[-1] > 2).mean():.4f}")
+    if getattr(config, "region_loss", "dice") == "dice+cldice":
+        r_t = int(round(config.cldice_roi_radius_px * config.img_size / config.window_size[0]))
+        extra_names.append("roi")
+        extras.append(np.stack([tile_roi(m, r_t) for m in masks_enc]).astype("uint8"))
+        print(f"[p2] tile ROIs for clDice: radius {r_t} cells "
+              f"(= {config.cldice_roi_radius_px} px at full resolution)")
+    if extras and config.photo_aug != "none":
+        raise NotImplementedError("P2 extras (weight map / ROI) are not combined with photo_aug")
+
+    # train_test_split shuffles by index only, so passing extra arrays leaves the
+    # (fixed) split unchanged.
+    split = train_test_split(
+        images, masks_enc, *extras, test_size=0.1, random_state=0  # split FIXED (see module docstring)
     )
+    X_train, X_val, y_train, y_val = split[:4]
+    extras_train = [split[4 + 2 * i] for i in range(len(extras))]
+    del split, extras
 
     X_train_t = torch.FloatTensor(X_train).permute(0, 3, 1, 2)
     y_train_t = torch.LongTensor(y_train)
@@ -129,7 +163,17 @@ def train(config, force=False):
     model = MultiUNet(n_channels=img_channels, n_classes=n_classes,
                       width_mult=config.width_mult, norm=config.norm).to(device)
     initialize_weights(model)
-    criterion = CEDiceLoss(ce_weight=config.ce_weight, weight=None)  # equal weights, as originals
+    if config.uses_p2_loss:
+        # P2: variant loss for training; the validation loss stays the published
+        # CEDiceLoss so learning curves remain comparable across variants.
+        criterion = build_p2_loss(config).to(device)
+        val_criterion = CEDiceLoss(ce_weight=config.ce_weight, weight=None)
+        print("[p2] loss: " + ", ".join(f"{k}={getattr(config, k)}" for k in P2_FIELDS))
+    else:
+        criterion = CEDiceLoss(ce_weight=config.ce_weight, weight=None)  # equal weights, as originals
+        val_criterion = criterion
+        if config.mask_downsample != "nearest":
+            print(f"[p2] mask_downsample={config.mask_downsample} with the published loss")
     optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-7)
     scheduler = None
     if config.lr_schedule == "cosine":
@@ -141,7 +185,9 @@ def train(config, force=False):
           f"lr_schedule={config.lr_schedule} | "
           f"ce/dice={config.ce_weight}/{1-config.ce_weight}")
 
-    train_ds = TensorDataset(X_train_t, y_train_t)
+    extras_train_t = [torch.from_numpy(np.ascontiguousarray(e)) for e in extras_train]
+    del extras_train
+    train_ds = TensorDataset(X_train_t, y_train_t, *extras_train_t)
     if config.photo_aug == "rgb":
         if config.channels in (4, 7):
             # Stage 1 Candidate 2: per-sample photometric jitter on the color
@@ -188,11 +234,15 @@ def train(config, force=False):
         model.train()
         tr_loss = tr_correct = tr_total = tr_iou = 0.0
         it = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.n_epochs}") if epoch % 10 == 0 else train_loader
-        for data, target in it:
-            data, target = data.to(device), target.to(device)
+        for batch in it:
+            data, target = batch[0].to(device), batch[1].to(device)
             optimizer.zero_grad()
             output = model(data)
-            loss = criterion(output, target)
+            if extra_names:
+                kw = {n: b.to(device) for n, b in zip(extra_names, batch[2:])}
+                loss = criterion(output, target, **kw)
+            else:
+                loss = criterion(output, target)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -209,7 +259,7 @@ def train(config, force=False):
             for data, target in val_loader:
                 data, target = data.to(device), target.to(device)
                 output = model(data)
-                v_loss += criterion(output, target).item()
+                v_loss += val_criterion(output, target).item()
                 _, predicted = torch.max(output.data, 1)
                 v_total += target.numel()
                 v_correct += (predicted == target).sum().item()
@@ -252,6 +302,7 @@ def train(config, force=False):
         "run_number": config.run_number,
         "best_epoch": best_epoch,
         "best_val_iou": best_val_iou,
+        "p2": {k: getattr(config, k) for k in P2_FIELDS},
     }
     torch.save({
         "epoch": config.n_epochs,

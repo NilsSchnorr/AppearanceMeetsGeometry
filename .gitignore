@@ -98,3 +98,10 @@ old/
 backup/
 01_image_preparation_for_ML/heightmap_mismatch_fix.ipynb
 experiments/v2_baseline_ens/confidence/7ch_run1/wall1_probs.npz
+
+# P2 queue (branch p2-fugen): run-time files, not results
+experiments/p2_smoke/
+experiments/p2_summary/queue_log.txt
+experiments/p2_summary/heartbeat.txt
+experiments/p2_summary/STOP
+experiments/p2_summary/*.tmp

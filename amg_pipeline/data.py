@@ -5,6 +5,8 @@ evaluation notebooks.
 Training-tile loading mirrors the original notebooks exactly:
   - cv2.imread with IMREAD_UNCHANGED (RGBA) / IMREAD_COLOR (normals)
   - cv2.resize to img_size with INTER_AREA (images) / INTER_NEAREST (masks)
+    (P2: config.mask_downsample="gap_wins" switches the masks to downsample_mask's
+    "gap wins" rule; the default "nearest" is the published behavior)
   - 7ch  = concat([rgb, alpha, normals])  (channel order RGB, A, NxNyNz)
   - 4ch  = rgba
   - 3ch  = normals
@@ -94,13 +96,80 @@ def load_training_tiles(config):
     images = np.array(images)
 
     masks = []
+    mode = getattr(config, "mask_downsample", "nearest")
     for mask_path in mask_paths:
         mask = cv2.imread(mask_path, 0)
-        mask = cv2.resize(mask, size, interpolation=cv2.INTER_NEAREST)
+        mask = downsample_mask(mask, size, mode)
         masks.append(mask)
     masks = np.array(masks)
 
     return images, masks
+
+
+# ---------------------------------------------------------------------------
+# P2 (Nov 2026): training-target and per-tile loss helpers
+# ---------------------------------------------------------------------------
+def downsample_mask(mask, size, mode="nearest"):
+    """Downsample a raw mask (0 = background) to `size` (w, h).
+
+    "nearest"  : cv2.INTER_NEAREST, exactly as the published training.
+    "gap_wins" : same, but a target cell becomes background as soon as ANY
+                 source pixel it touches (fully or partly) is background, so a
+                 1-2 px joint can no longer vanish ("Fuge gewinnt").
+                 INTER_AREA of the background indicator is > 0 exactly for
+                 those cells (checked against the exact cell overlap).
+    """
+    small = cv2.resize(mask, size, interpolation=cv2.INTER_NEAREST)
+    if mode == "gap_wins" and mask.shape[:2] != (size[1], size[0]):
+        bg = (mask == 0).astype(np.float32)
+        any_bg = cv2.resize(bg, size, interpolation=cv2.INTER_AREA) > 1e-6
+        small[any_bg] = 0
+    elif mode not in ("nearest", "gap_wins"):
+        raise ValueError(f"unknown mask_downsample {mode!r}")
+    return small
+
+
+def border_weight_map(mask_enc, w0=10.0, sigma=5.0):
+    """U-Net border weight map (Ronneberger et al. 2015), border term only.
+
+    w(x) = 1 + w0 * exp(-(d1 + d2)^2 / (2 sigma^2)) on BACKGROUND pixels, where
+    d1, d2 are the distances to the nearest and second-nearest stone; stone
+    pixels keep w = 1. No class-balancing term (the class weights the paper's
+    term would add over-corrected in earlier runs). Stones = 4-connected
+    components of the (already downsampled) target, so a joint that the target
+    lost never gets a high weight. Distances are computed in a window of 4*sigma
+    around each stone; beyond that the term is below w0 * e^-8 and is dropped.
+    """
+    mask_enc = np.asarray(mask_enc)
+    h, w = mask_enc.shape
+    out = np.ones((h, w), dtype=np.float32)
+    stone = (mask_enc > 0).astype(np.uint8)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(stone, connectivity=4)
+    if n <= 2 or w0 == 0:
+        return out
+    m = int(np.ceil(4 * sigma))
+    d1 = np.full((h, w), np.inf, dtype=np.float32)
+    d2 = np.full((h, w), np.inf, dtype=np.float32)
+    for k in range(1, n):
+        x, y, bw, bh, _ = stats[k]
+        y0, y1 = max(0, y - m), min(h, y + bh + m)
+        x0, x1 = max(0, x - m), min(w, x + bw + m)
+        sub = (lab[y0:y1, x0:x1] != k).astype(np.uint8)
+        dk = cv2.distanceTransform(sub, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+        D1 = d1[y0:y1, x0:x1]
+        D2 = d2[y0:y1, x0:x1]
+        d2[y0:y1, x0:x1] = np.where(dk < D1, D1, np.minimum(D2, dk))
+        d1[y0:y1, x0:x1] = np.minimum(D1, dk)
+    bg = (mask_enc == 0) & np.isfinite(d2)
+    s = d1[bg] + d2[bg]
+    out[bg] = 1.0 + w0 * np.exp(-(s * s) / (2.0 * sigma * sigma))
+    return out
+
+
+def tile_roi(mask_enc, radius):
+    """Per-tile ROI as in the evaluation: closing of the stone mask with disk(radius)."""
+    from .p2_morph import fast_binary_closing_r
+    return fast_binary_closing_r(np.asarray(mask_enc) > 0, int(radius))
 
 
 def encode_masks(masks):

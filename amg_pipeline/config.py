@@ -40,6 +40,11 @@ Fields are labelled by which review step first needs them:
                                      segmentation; "model_best.pth" evaluates
                                      the best-val checkpoint written alongside)
 
+  P2 gap/joint experiments (branch p2-fugen, Nov 2026), all defaulted to the
+  published recipe: mask_downsample, bg_ce_weight, pixel_loss, focal_gamma,
+  weight_map, wmap_w0, wmap_sigma, region_loss, tversky_stone_fp,
+  cldice_lambda, cldice_iters, cldice_roi_radius_px (see p2_losses.py).
+
   RESERVED (key present + validated, logic intentionally NOT implemented yet;
   setting them raises a clear error so they can't be used by accident):
     eval_type            -> "roi" (Step 5 adds "gap"/"stone_detection"/"basic")
@@ -104,6 +109,23 @@ class RunConfig:
     lr_schedule: str = "constant"      # Stage 1 C3: "constant" or "cosine"
     checkpoint_filename: str = "model.pth"  # which checkpoint to load at inference
 
+    # ---- P2 gap/joint experiments (Nov 2026), branch p2-fugen ---------------
+    # Every default reproduces the published recipe; train.py only switches to
+    # the P2 loss (p2_losses.P2Loss) when one of these differs from its default.
+    mask_downsample: str = "nearest"   # "nearest" (paper) | "gap_wins": a target cell is
+                                       # background as soon as any source pixel it touches is
+    bg_ce_weight: float = 1.0          # CE class weight of Background (stones stay 1.0)
+    pixel_loss: str = "ce"             # "ce" (paper) | "focal"
+    focal_gamma: float = 2.0
+    weight_map: bool = False           # U-Net border weight map (Ronneberger et al. 2015)
+    wmap_w0: float = 10.0
+    wmap_sigma: float = 5.0            # in target cells (img_size grid)
+    region_loss: str = "dice"          # "dice" (paper) | "tversky" | "dice+cldice"
+    tversky_stone_fp: float = 0.7      # Tversky weight of "stone on a gap" (bg mirrored: 0.3)
+    cldice_lambda: float = 0.5         # share of clDice inside the region term
+    cldice_iters: int = 5              # soft-skeleton iterations
+    cldice_roi_radius_px: int = 45     # ROI closing radius at full resolution (as evaluation)
+
     # ---- RESERVED (not implemented yet) -----------------------------------
     eval_type: str = "roi"              # Step 5
 
@@ -134,6 +156,21 @@ class RunConfig:
             raise ValueError(f"lr_schedule must be constant/cosine; got {self.lr_schedule!r}")
         if not self.checkpoint_filename or not self.checkpoint_filename.endswith(".pth"):
             raise ValueError(f"checkpoint_filename must be a .pth name; got {self.checkpoint_filename!r}")
+        # P2 fields
+        if self.mask_downsample not in ("nearest", "gap_wins"):
+            raise ValueError(f"mask_downsample must be nearest/gap_wins; got {self.mask_downsample!r}")
+        if self.bg_ce_weight <= 0:
+            raise ValueError(f"bg_ce_weight must be > 0; got {self.bg_ce_weight}")
+        if self.pixel_loss not in ("ce", "focal"):
+            raise ValueError(f"pixel_loss must be ce/focal; got {self.pixel_loss!r}")
+        if self.region_loss not in ("dice", "tversky", "dice+cldice"):
+            raise ValueError(f"region_loss must be dice/tversky/dice+cldice; got {self.region_loss!r}")
+        if not (0.0 < self.tversky_stone_fp < 1.0):
+            raise ValueError(f"tversky_stone_fp must be in (0,1); got {self.tversky_stone_fp}")
+        if not (0.0 <= self.cldice_lambda <= 1.0):
+            raise ValueError(f"cldice_lambda must be in [0,1]; got {self.cldice_lambda}")
+        if self.wmap_w0 < 0 or self.wmap_sigma <= 0 or self.focal_gamma < 0 or self.cldice_iters < 1:
+            raise ValueError("wmap_w0 >= 0, wmap_sigma > 0, focal_gamma >= 0, cldice_iters >= 1 required")
         # Reserved-feature guards: fail loudly rather than silently misbehave.
         if self.eval_type != "roi":
             raise NotImplementedError(
@@ -145,6 +182,12 @@ class RunConfig:
     @property
     def n_classes(self) -> int:
         return 4
+
+    @property
+    def uses_p2_loss(self) -> bool:
+        """True iff any P2 loss option differs from the published recipe."""
+        return (self.bg_ce_weight != 1.0 or self.pixel_loss != "ce"
+                or self.weight_map or self.region_loss != "dice")
 
     def to_json(self, path: str):
         os.makedirs(os.path.dirname(path), exist_ok=True)
