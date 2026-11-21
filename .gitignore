@@ -103,5 +103,7 @@ experiments/v2_baseline_ens/confidence/7ch_run1/wall1_probs.npz
 experiments/p2_smoke/
 experiments/p2_summary/queue_log.txt
 experiments/p2_summary/heartbeat.txt
+experiments/p2_summary/child_heartbeat.txt
+experiments/p2_summary/child_result.json
 experiments/p2_summary/STOP
 experiments/p2_summary/*.tmp

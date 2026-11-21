@@ -38,19 +38,33 @@ def disk_radius(footprint):
     return r
 
 
-def fast_binary_closing_r(image, r):
-    """Exact binary closing of a 2-D boolean image with disk(r)."""
+def _dist_to_false(mask_true, backend):
+    """Exact Euclidean distance of every True pixel to the nearest False pixel."""
+    if backend == "scipy":
+        from scipy import ndimage as ndi
+        return ndi.distance_transform_edt(mask_true)
+    if backend != "cv2":
+        raise ValueError(f"unknown backend {backend!r}")
+    return cv2.distanceTransform(mask_true.astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+
+
+def fast_binary_closing_r(image, r, backend="cv2"):
+    """Exact binary closing of a 2-D boolean image with disk(r).
+
+    backend "cv2" (whole walls in the evaluation, as checked by self_check) or
+    "scipy" (per-tile training extras; also exact, float64).
+    """
     img = np.asarray(image).astype(bool)
     if r <= 0 or not img.any():
         return img.copy()
     # dilation: distance to nearest set pixel (zeros of ~img) <= r
-    dist_fg = cv2.distanceTransform((~img).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    dist_fg = _dist_to_false(~img, backend)
     dil = dist_fg <= r + _EPS
     del dist_fg
     if dil.all():
         return dil
     # erosion: distance to nearest unset pixel of dil > r
-    dist_bg = cv2.distanceTransform(dil.astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    dist_bg = _dist_to_false(dil, backend)
     return dist_bg > r + _EPS
 
 

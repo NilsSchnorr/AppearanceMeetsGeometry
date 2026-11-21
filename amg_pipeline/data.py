@@ -35,6 +35,8 @@ RGB_TO_CLASS = {
 CLASS_NAMES = ["Background", "Ashlar", "Polygonal", "Quarry"]
 CLASS_COLORS_RGB = [[0, 0, 0], [0, 0, 255], [255, 0, 0], [255, 255, 0]]
 
+_CROSS = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=bool)  # 4-connectivity
+
 
 def _sorted_pngs(directory):
     return sorted(glob.glob(os.path.join(directory, "*.png")))
@@ -106,6 +108,19 @@ def load_training_tiles(config):
     return images, masks
 
 
+def load_training_masks(config, mode=None):
+    """Only the training masks, exactly as load_training_tiles prepares them
+    (same files, same order, same downsampling). Used by the P2 queue's
+    full-data check of the per-tile extras; training itself does not call it.
+    Note: load_training_tiles skips a tile whose image fails to load; this
+    function does not look at images.
+    """
+    size = (config.img_size, config.img_size)
+    mode = mode or getattr(config, "mask_downsample", "nearest")
+    masks = [downsample_mask(cv2.imread(p, 0), size, mode) for p in _sorted_pngs(config.mask_dir)]
+    return np.array(masks)
+
+
 # ---------------------------------------------------------------------------
 # P2 (Nov 2026): training-target and per-tile loss helpers
 # ---------------------------------------------------------------------------
@@ -139,23 +154,31 @@ def border_weight_map(mask_enc, w0=10.0, sigma=5.0):
     components of the (already downsampled) target, so a joint that the target
     lost never gets a high weight. Distances are computed in a window of 4*sigma
     around each stone; beyond that the term is below w0 * e^-8 and is dropped.
+
+    Implementation (21.11.2026): scipy.ndimage (label, find_objects, exact
+    Euclidean distance transform) instead of cv2.connectedComponentsWithStats /
+    cv2.distanceTransform. The first weight-map run on the Windows machine
+    (20.11.2026) died inside this step with an access violation (0xC0000005)
+    in native code. Same computation; checked equal to the cv2 version on all
+    real-polygon training tiles (max |diff| reported in the handoff).
     """
+    from scipy import ndimage as ndi
     mask_enc = np.asarray(mask_enc)
     h, w = mask_enc.shape
     out = np.ones((h, w), dtype=np.float32)
-    stone = (mask_enc > 0).astype(np.uint8)
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(stone, connectivity=4)
-    if n <= 2 or w0 == 0:
+    lab, n = ndi.label(mask_enc > 0, structure=_CROSS)  # 4-connected stones 1..n
+    if n < 2 or w0 == 0:
         return out
     m = int(np.ceil(4 * sigma))
     d1 = np.full((h, w), np.inf, dtype=np.float32)
     d2 = np.full((h, w), np.inf, dtype=np.float32)
-    for k in range(1, n):
-        x, y, bw, bh, _ = stats[k]
-        y0, y1 = max(0, y - m), min(h, y + bh + m)
-        x0, x1 = max(0, x - m), min(w, x + bw + m)
-        sub = (lab[y0:y1, x0:x1] != k).astype(np.uint8)
-        dk = cv2.distanceTransform(sub, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    for k, sl in enumerate(ndi.find_objects(lab), start=1):
+        if sl is None:
+            continue
+        y0, y1 = max(0, sl[0].start - m), min(h, sl[0].stop + m)
+        x0, x1 = max(0, sl[1].start - m), min(w, sl[1].stop + m)
+        # distance of every pixel in the window to stone k (stone k itself -> 0)
+        dk = ndi.distance_transform_edt(lab[y0:y1, x0:x1] != k).astype(np.float32)
         D1 = d1[y0:y1, x0:x1]
         D2 = d2[y0:y1, x0:x1]
         d2[y0:y1, x0:x1] = np.where(dk < D1, D1, np.minimum(D2, dk))
@@ -167,9 +190,14 @@ def border_weight_map(mask_enc, w0=10.0, sigma=5.0):
 
 
 def tile_roi(mask_enc, radius):
-    """Per-tile ROI as in the evaluation: closing of the stone mask with disk(radius)."""
+    """Per-tile ROI as in the evaluation: closing of the stone mask with disk(radius).
+
+    Uses the scipy distance transform (exact, like the cv2 one used for whole
+    walls), so the per-tile training extras make no OpenCV calls (see
+    border_weight_map).
+    """
     from .p2_morph import fast_binary_closing_r
-    return fast_binary_closing_r(np.asarray(mask_enc) > 0, int(radius))
+    return fast_binary_closing_r(np.asarray(mask_enc) > 0, int(radius), backend="scipy")
 
 
 def encode_masks(masks):
